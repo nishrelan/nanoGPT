@@ -29,6 +29,9 @@ from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
 
+import sys
+from peft.lora import LoraConfig, LoraModel, mark_only_lora_as_trainable
+
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
@@ -72,6 +75,11 @@ backend = 'nccl' # 'nccl', 'gloo', etc.
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'bfloat16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = True # use PyTorch 2.0 to compile the model to be faster
+# LoRA finetuning
+do_lora = False
+alpha = 8
+r = 8
+lora_dropout = 0.05
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('configurator.py').read()) # overrides from command line or config file
@@ -185,7 +193,21 @@ elif init_from.startswith('gpt2'):
 if block_size < model.config.block_size:
     model.crop_block_size(block_size)
     model_args['block_size'] = block_size # so that the checkpoint will have the right value
+
+# maybe should not do this? I guess no harm in doing it though
 model.to(device)
+
+# TODO: Config stuff: add config file for lora finetuning, and edit train.py (this file)
+# to make it configurable for lora training
+# TODO: Look up a decent configuration setup and then test lora finetuning
+if do_lora:
+    lora_model = LoraModel(model, LoraConfig(r=r, lora_alpha=alpha, lora_dropout=lora_dropout))
+    model = lora_model
+    print("Number of total params in lora model: {}".format(lora_model.get_num_params()))
+    mark_only_lora_as_trainable(lora_model)
+    print("Number of trainable params in lora model: {}".format(lora_model.get_num_trainable_params()))
+
+
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))

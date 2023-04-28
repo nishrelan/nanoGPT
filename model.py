@@ -15,6 +15,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+import sys
+
 # @torch.jit.script # good to enable when not using torch.compile, disable when using (our default)
 def new_gelu(x):
     """
@@ -164,6 +166,13 @@ class GPT(nn.Module):
         n_params = sum(p.numel() for p in self.parameters())
         if non_embedding:
             n_params -= self.transformer.wpe.weight.numel()
+        return n_params
+    
+    def get_num_trainable_params(self, non_embedding=True):
+        n_params = sum([p.numel() if p.requires_grad else 0 for p in self.parameters()])
+        if non_embedding:
+            if self.transformer.wpe.weight.requires_grad:
+                n_params -= self.transformer.wpe.weight.numel()
         return n_params
 
     def _init_weights(self, module):
