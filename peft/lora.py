@@ -81,10 +81,6 @@ class LoraModel(nn.Module):
         self.model = model
         self.forward = self.model.forward
         self.config = config
-        # quick hack while testing lora code. Eventually config 
-        # param will be properly initialized
-        if self.config is None:
-            self.config = LoraConfig(lora_alpha=8, lora_dropout=0.02)
         blocks = []
         for name, module in self.model.named_modules():
             if module.__class__.__name__ == "CausalSelfAttention":
@@ -145,15 +141,14 @@ class LoraLinear(nn.Module):
         self.dropout = dropout
 
         self.lora_A = nn.Linear(in_features=in_features, out_features=r, bias=False)
-        self.lora_B = nn.Linear(in_features=r, out_features=out_features, bias=False)
-        # initialize B to zeros as in paper
-        with torch.no_grad():
-            self.lora_B.weight.data = torch.zeros_like(self.lora_B.weight.data)
+        self.lora_B = nn.Linear(in_features=r, out_features=out_features, bias=False) 
 
         self.lora_dropout = nn.Dropout(p=self.dropout)
 
         self.merged = False
         self.scaling = self.alpha / self.r
+
+        self.reset_parameters()
 
     def forward(self, x: torch.Tensor):
         if self.merged:
@@ -163,6 +158,11 @@ class LoraLinear(nn.Module):
             lora_x = self.lora_B(self.lora_A(self.lora_dropout(x)))
             lora_x = lora_x * self.scaling
             return base + lora_x
+    
+    def reset_parameters(self):
+        # lora_A already initialized like a normal linear module
+        # init lora_B to be zeros as in paper
+        torch.nn.init.zeros_(self.lora_B.weight)
 
 
     def merge(self):
