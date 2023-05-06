@@ -15,6 +15,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+from old_model import minGPTConfig, minGPT
+
 import sys
 
 # @torch.jit.script # good to enable when not using torch.compile, disable when using (our default)
@@ -42,9 +44,9 @@ class CausalSelfAttention(nn.Module):
         super().__init__()
         assert config.n_embd % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
-        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
+        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.linear_bias)
         # output projection
-        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.linear_bias)
         # regularization
         self.attn_dropout = nn.Dropout(config.dropout)
         self.resid_dropout = nn.Dropout(config.dropout)
@@ -89,8 +91,8 @@ class MLP(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
+        self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.linear_bias)
+        self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.linear_bias)
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):
@@ -104,9 +106,9 @@ class Block(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        self.ln_1 = LayerNorm(config.n_embd, bias=config.ln_bias)
         self.attn = CausalSelfAttention(config)
-        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
+        self.ln_2 = LayerNorm(config.n_embd, bias=config.ln_bias)
         self.mlp = MLP(config)
 
     def forward(self, x):
@@ -122,7 +124,9 @@ class GPTConfig:
     n_head: int = 12
     n_embd: int = 768
     dropout: float = 0.0
-    bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    linear_bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    ln_bias: bool = False
+    weight_tying: bool = True # True: embedding weights and final layer weights are shared
 
 class GPT(nn.Module):
 
@@ -137,14 +141,15 @@ class GPT(nn.Module):
             wpe = nn.Embedding(config.block_size, config.n_embd),
             drop = nn.Dropout(config.dropout),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            ln_f = LayerNorm(config.n_embd, bias=config.bias),
+            ln_f = LayerNorm(config.n_embd, bias=config.ln_bias),
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         # with weight tying when using torch.compile() some warnings get generated:
         # "UserWarning: functional_call was passed multiple values for tied weights.
         # This behavior is deprecated and will be an error in future versions"
         # not 100% sure what this is, so far seems to be harmless. TODO investigate
-        self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
+        if config.weight_tying:
+            self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
 
         # init all weights
         self.apply(self._init_weights)
@@ -219,6 +224,61 @@ class GPT(nn.Module):
             if hasattr(block.attn, 'bias'):
                 block.attn.bias = block.attn.bias[:,:,:block_size,:block_size]
 
+    @classmethod
+    def from_pretrained_othello(cls, path_to_ckpt):
+        vocab_size = 61
+        block_size = 59
+        n_layer = 8
+        n_head = 8
+        n_embd = 512
+        dropout = 0.0 # add as param to function (override arg or something)
+        linear_bias = True
+        ln_bias = False
+        weight_tying = False
+
+        config = minGPTConfig(vocab_size, block_size, n_layer=8, n_head=8, n_embd=512)
+        othello_model = minGPT(config)
+        othello_model.load_state_dict(torch.load(path_to_ckpt, map_location=torch.device('cpu')))
+        othello_dict = othello_model.state_dict()
+        keys = list(othello_dict.keys())
+        new_config = GPTConfig(block_size, vocab_size, n_layer, n_head, n_embd, dropout, linear_bias, ln_bias, weight_tying)
+        model = GPT(new_config)
+        # TODO: parameters seem to match up, now just need to match up the keys and merge k,q,v into a single linear layer
+
+        def replace_attention_params(source, target):
+            old_weight_shape = source.c_attn.weight.shape
+            concat_weights = torch.cat((target.query.weight, target.key.weight, target.value.weight), dim=0)
+            assert old_weight_shape == concat_weights.shape
+            source.c_attn.weight = nn.Parameter(concat_weights)
+            concat_biases = torch.cat((target.query.bias, target.key.bias, target.value.bias), dim=0)
+            assert source.c_attn.bias.shape == concat_biases.shape
+            source.c_attn.bias = nn.Parameter(concat_biases)
+
+            # just switch reference to correct nn.Linear module
+            source.c_proj = target.proj
+        
+        def replace_block(source, target):
+            source.ln_1.weight = target.ln1.weight
+            source.ln_1.bias = target.ln1.bias
+            source.ln_2.weight = target.ln2.weight
+            source.ln_2.bias = target.ln2.bias
+            replace_attention_params(source.attn, target.attn)
+            source.mlp.c_fc = target.mlp[0]
+            source.mlp.c_proj = target.mlp[2]
+            assert isinstance(source.mlp.c_fc, nn.Linear)
+            assert isinstance(source.mlp.c_proj, nn.Linear)
+        
+        with torch.no_grad():
+            model.transformer.wte = othello_model.tok_emb
+            model.transformer.wpe.weight = nn.Parameter(torch.squeeze(othello_model.pos_emb))
+            for source, target in zip(model.transformer.h, othello_model.blocks):
+                replace_block(source, target)
+            model.lm_head = othello_model.head
+            model.transformer.ln_f.weight = othello_model.ln_f.weight
+            model.transformer.ln_f.bias = othello_model.ln_f.bias
+        
+        return model
+             
     @classmethod
     def from_pretrained(cls, model_type, override_args=None):
         assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}

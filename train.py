@@ -1,3 +1,6 @@
+# TODO: add from pretrained method for loading minGPT as defined in othello-world
+# TODO: add way to save lora weights
+
 """
 This training script can be run both on a single gpu in debug mode,
 and also in a larger training run with distributed data parallel (ddp).
@@ -149,6 +152,8 @@ if os.path.exists(meta_path):
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
                   bias=bias, vocab_size=None, dropout=dropout) # start with model_args from command line
+lora_args = dict(r=r, alpha=alpha, lora_dropout=lora_dropout)
+
 if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")
@@ -189,6 +194,13 @@ elif init_from.startswith('gpt2'):
     # read off the created config params, so we can store them into checkpoint correctly
     for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
         model_args[k] = getattr(model.config, k)
+elif init_from == 'othello':
+    print(f"Initializing from pretrained Othello GPT model")
+    GPT.from_pretrained_othello('./checkpoints/gpt_championship.ckpt')
+    sys.exit()
+
+
+
 # crop down the model block size if desired, using model surgery
 if block_size < model.config.block_size:
     model.crop_block_size(block_size)
@@ -197,9 +209,6 @@ if block_size < model.config.block_size:
 # maybe should not do this? I guess no harm in doing it though
 model.to(device)
 
-# TODO: Config stuff: add config file for lora finetuning, and edit train.py (this file)
-# to make it configurable for lora training
-# TODO: Look up a decent configuration setup and then test lora finetuning
 if do_lora:
     lora_model = LoraModel(model, LoraConfig(r=r, lora_alpha=alpha, lora_dropout=lora_dropout))
     model = lora_model

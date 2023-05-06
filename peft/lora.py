@@ -21,6 +21,8 @@ from .utils import _get_submodules
 #  Licensed under the Apache License, Version 2.0 (the "License").
 #  ------------------------------------------------------------------------------------------
 
+# TODO: Add bias to Lora Layer (not training bias during finetuning, but just make it so 
+#       that a pretrained model with biases can retain them in the lora version)
 
 @dataclass
 class LoraConfig:
@@ -122,7 +124,7 @@ class LoraModel(nn.Module):
 
 
 # Below code is based on https://github.com/microsoft/LoRA/blob/main/loralib/layers.py
-# and modified to work with PyTorch FSDP
+# and modified to work with nanoGPT models
 
 #  ------------------------------------------------------------------------------------------
 #  Copyright (c) Microsoft Corporation. All rights reserved.
