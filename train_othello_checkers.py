@@ -1,4 +1,3 @@
-# TODO: add from pretrained method for loading minGPT as defined in othello-world
 # TODO: add way to save lora weights
 
 """
@@ -31,6 +30,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
+from data.checkers.prepare import CheckersCharDataset
+from torch.utils.data import DataLoader, RandomSampler
 
 import sys
 from peft.lora import LoraConfig, LoraModel, mark_only_lora_as_trainable
@@ -80,6 +81,7 @@ dtype = 'bfloat16' # 'float32', 'bfloat16', or 'float16', the latter will auto i
 compile = True # use PyTorch 2.0 to compile the model to be faster
 # LoRA finetuning
 do_lora = False
+train_checkers = False
 alpha = 8
 r = 8
 lora_dropout = 0.05
@@ -120,15 +122,24 @@ device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.aut
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
+
+
+
 # poor man's data loader
-data_dir = os.path.join('data', dataset)
-train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
-val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+filename = './data/checkers/processed_checkers.pkl'
+with open(filename, 'rb') as f:
+    all_data = pickle.load(f)
+tv_split = 0.8
+cutoff = int(len(all_data)*tv_split)
+train_data = CheckersCharDataset(all_data[:cutoff])
+val_data = CheckersCharDataset(all_data[cutoff:])
+train_sampler = RandomSampler(train_data, replacement=True)
+train_loader = DataLoader(train_data, batch_size, sampler=train_sampler)
+val_loader = DataLoader(val_data, batch_size, shuffle=False)
+
+
 def get_batch(split):
-    data = train_data if split == 'train' else val_data
-    ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+    x,y = next(iter(train_loader)) if split == 'train' else next(iter(val_loader))
     if device_type == 'cuda':
         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
@@ -136,18 +147,13 @@ def get_batch(split):
         x, y = x.to(device), y.to(device)
     return x, y
 
+
+
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
 best_val_loss = 1e9
 
-# attempt to derive vocab_size from the dataset
-meta_path = os.path.join(data_dir, 'meta.pkl')
-meta_vocab_size = None
-if os.path.exists(meta_path):
-    with open(meta_path, 'rb') as f:
-        meta = pickle.load(f)
-    meta_vocab_size = meta['vocab_size']
-    print(f"found vocab_size = {meta_vocab_size} (inside {meta_path})")
+meta_vocab_size = 61 + 6
 
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
@@ -196,8 +202,8 @@ elif init_from.startswith('gpt2'):
         model_args[k] = getattr(model.config, k)
 elif init_from == 'othello':
     print(f"Initializing from pretrained Othello GPT model")
-    GPT.from_pretrained_othello('./checkpoints/gpt_championship.ckpt')
-    sys.exit()
+    model = GPT.from_pretrained_othello('./checkpoints/gpt_championship.ckpt')
+
 
 
 
@@ -205,6 +211,11 @@ elif init_from == 'othello':
 if block_size < model.config.block_size:
     model.crop_block_size(block_size)
     model_args['block_size'] = block_size # so that the checkpoint will have the right value
+
+
+if train_checkers:
+    # add 6 new tokens to token embedding layer
+    model.add_new_embeddings(6)
 
 # maybe should not do this? I guess no harm in doing it though
 model.to(device)

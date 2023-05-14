@@ -127,6 +127,7 @@ class GPTConfig:
     linear_bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
     ln_bias: bool = False
     weight_tying: bool = True # True: embedding weights and final layer weights are shared
+    bias: bool = True # does nothing
 
 class GPT(nn.Module):
 
@@ -278,6 +279,25 @@ class GPT(nn.Module):
             model.transformer.ln_f.bias = othello_model.ln_f.bias
         
         return model
+    
+    def add_new_embeddings(self, num: int):
+        """
+        this function essentially adds tokens to the model vocab by initializing a new embedding layer,
+        and then copying over the (pretrained) embeddings for the existing vocab
+        """
+        config = self.config
+        new_embedding_layer = nn.Embedding(config.vocab_size + num, config.n_embd)
+        with torch.no_grad():
+            new_embedding_layer.weight[:config.vocab_size] = self.transformer.wte.weight
+            self.transformer.wte = new_embedding_layer
+            ## if we're not doing weight tying, then we need to add extra connections to lm_head as well
+            if not self.config.weight_tying:
+                self.new_lm_head = nn.Linear(config.n_embd, config.vocab_size + num, bias=False)
+                self.new_lm_head.weight[:config.vocab_size] = self.lm_head.weight
+                self.lm_head = self.new_lm_head
+            else:
+                self.transformer.wte.weight = self.lm_head.weight
+        self.config.vocab_size += num
              
     @classmethod
     def from_pretrained(cls, model_type, override_args=None):
@@ -371,7 +391,10 @@ class GPT(nn.Module):
         # will only return the first occurence, key'd by 'transformer.wte.weight', below.
         # so let's manually remove 'lm_head.weight' from decay set. This will include
         # this tensor into optimization via transformer.wte.weight only, and not decayed.
-        decay.remove('lm_head.weight')
+
+        # edit: only do this 
+        if self.config.weight_tying: 
+            decay.remove('lm_head.weight')
 
         # validate that we considered every parameter
         param_dict = {pn: p for pn, p in self.named_parameters()}

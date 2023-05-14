@@ -1,4 +1,3 @@
-# TODO: add from pretrained method for loading minGPT as defined in othello-world
 # TODO: add way to save lora weights
 
 """
