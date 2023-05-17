@@ -162,6 +162,10 @@ class GPT(nn.Module):
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
 
+
+    # TODO: adjust these to account for weight tying optionality
+    # right now these methods assume that parameters are shared,
+    # but we've added a toggle for that
     def get_num_params(self, non_embedding=True):
         """
         Return the number of parameters in the model.

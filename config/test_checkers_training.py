@@ -24,8 +24,15 @@ dropout = 0.0
 # load pretrained othello model
 init_from = "othello"
 
+# othello model params
+n_layer = 8
+n_head = 8
+n_embd = 512
+block_size = 60
+
 # Set this to True to add extra embeddings when training using checkers dataset
 train_checkers = True
+add_annotation_tokens = False
 
 # Assuming we should finetune at a constant rate based on other finetuning configs
 decay_lr = False

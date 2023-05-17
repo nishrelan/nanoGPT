@@ -12,38 +12,38 @@ cols = '12345678'
 
 
 checkers_to_othello = {
-    1: 'b1',
-    2: 'd1',
-    3: 'f1',
-    4: 'h1',
-    5: 'a2',
-    6: 'c2',
-    7: 'e2',
-    8: 'g2',
-    9: 'b3',
-    10: 'd3',
-    11: 'f3',
-    12: 'h3',
-    13: 'a4',
-    14: 'c4',
-    15: 'e4',
-    16: 'g4',
-    17: 'b5',
-    18: 'd5',
-    19: 'f5',
-    20: 'h5',
-    21: 'a6',
-    22: 'c6',
-    23: 'e6',
-    24: 'g6',
-    25: 'b7',
-    26: 'd7',
-    27: 'f7',
-    28: 'h7',
-    29: 'a8',
-    30: 'c8',
-    31: 'e8',
-    32: 'g8',
+    32: 'b1',
+    31: 'd1',
+    30: 'f1',
+    29: 'h1',
+    28: 'a2',
+    27: 'c2',
+    26: 'e2',
+    25: 'g2',
+    24: 'b3',
+    23: 'd3',
+    22: 'f3',
+    21: 'h3',
+    20: 'a4',
+    19: 'c4',
+    18: 'e4',
+    17: 'g4',
+    16: 'b5',
+    15: 'd5',
+    14: 'f5',
+    13: 'h5',
+    12: 'a6',
+    11: 'c6',
+    10: 'e6',
+    9: 'g6',
+    8: 'b7',
+    7: 'd7',
+    6: 'f7',
+    5: 'h7',
+    4: 'a8',
+    3: 'c8',
+    2: 'e8',
+    1: 'g8',
 }
 
 
@@ -144,11 +144,11 @@ class CheckersCharDataset(Dataset):
 
 
 
-load_from_pickle = True
-exec(open('configurator.py').read()) # overrides from command line or config file
 
 
-if not load_from_pickle:
+# only execute this part if running this file, ie if 
+# we want to generate dataset
+if __name__ == '__main__':
     base_dir = os.path.join(os.getcwd())
 
     with open(os.path.join(base_dir, 'raw_data/OCA_2.0.pdn'), 'r') as f:
@@ -167,20 +167,21 @@ if not load_from_pickle:
             for move in game.moves:
                 if move in ['0-1', '1-0', '1/2-1/2']:
                     continue
-                if 'x' in move:
-                    temp = [checkers_to_othello[int(e)] for e in move.split('x') if e]
-                    for t in temp:
-                        tokens.append(t)
-                        tokens.append('x')
-                    tokens.pop()
-                else:
+                
+                if move.count('x') == 0:
                     tokens.extend([checkers_to_othello[int(e)] for e in move.split('-')])
-                tokens.append('|')
+                elif move.count('x') == 1:
+                    tokens.extend([checkers_to_othello[int(e)] for e in move.split('x')])
+                else:
+                    temp = [checkers_to_othello[int(e)] for e in move.split('x')]
+                    temp = [a for b in [[e, e] for e in temp] for a in b][1:-1]
+                    tokens.extend(temp)
             tokens = [chartoint(t) for t in tokens]
-            
         except ValueError:
             continue
         sequences.append(tokens)
+
+
 
     print("Number of games processed: {}".format(len(sequences)))
     with open('processed_checkers.pkl', 'wb') as f:

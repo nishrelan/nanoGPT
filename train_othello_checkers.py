@@ -1,5 +1,5 @@
 # TODO: add way to save lora weights
-
+# TODO: override args when loading othello!
 """
 This training script can be run both on a single gpu in debug mode,
 and also in a larger training run with distributed data parallel (ddp).
@@ -30,11 +30,12 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
-from data.checkers.prepare import CheckersCharDataset
+from data.checkers.prepare import CheckersCharDataset, inttochar, chartoint
 from torch.utils.data import DataLoader, RandomSampler
 
 import sys
 from peft.lora import LoraConfig, LoraModel, mark_only_lora_as_trainable
+from checkers import CheckersBoard
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
@@ -81,10 +82,15 @@ dtype = 'bfloat16' # 'float32', 'bfloat16', or 'float16', the latter will auto i
 compile = True # use PyTorch 2.0 to compile the model to be faster
 # LoRA finetuning
 do_lora = False
-train_checkers = False
 alpha = 8
 r = 8
 lora_dropout = 0.05
+# checkers specific stuff
+train_checkers = False # if true need to add extra embeddings
+acc_games = 1 # number of games to use for accuracy estimate
+acc_interval = 100
+
+
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('configurator.py').read()) # overrides from command line or config file
@@ -213,11 +219,11 @@ if block_size < model.config.block_size:
     model_args['block_size'] = block_size # so that the checkpoint will have the right value
 
 
+# add new tokens to token embedding layer
 if train_checkers:
-    # add 6 new tokens to token embedding layer
-    model.add_new_embeddings(6)
+    model.add_new_embeddings(4)
 
-# maybe should not do this? I guess no harm in doing it though
+
 model.to(device)
 
 if do_lora:
@@ -247,6 +253,55 @@ if compile:
 # wrap model into DDP container
 if ddp:
     model = DDP(model, device_ids=[ddp_local_rank])
+
+@torch.no_grad()
+def estimate_accuracy():
+    def index_to_alpha(move):
+        if move.sum() == 0:
+            return None # 0s indicate -100 tokens, meaning game is over
+        return ''.join([inttochar(val_data.itos[m.item()]) for m in move])
+    out = {
+        'train': [0, 0],
+        'val': [0, 0]
+    }
+    model.eval()
+    games_done = {
+        'train': 0,
+        'val': 0
+    }
+    for split in ['train', 'val']:
+        while True:
+            X, Y = get_batch(split)
+            for idx, (sample, label) in enumerate(zip(X, Y)):
+                board = CheckersBoard()
+                for i in range(2, 60, 2):
+                    move = index_to_alpha(sample[i-2:i])
+                    if not move:
+                        break
+                    board.make_move(move)
+                    partial_seq = sample[:i]
+                    pred = predict_checkers_move(partial_seq)
+                    if board.is_legal(index_to_alpha(pred)):
+                        out[split][0] += 1
+                    out[split][1] += 1
+            games_done[split] += len(X)
+            if games_done[split] >= acc_games:
+                break
+    model.train()
+    return out
+          
+
+def predict_checkers_move(x):
+    """
+    Given partial sequence x, predict the next two tokens
+    x: torch.tensor of shape (T,)
+    """
+    x = torch.unsqueeze(x, 0)
+    logits, _ = model(x)
+    new = torch.cat([x, torch.argmax(torch.squeeze(logits, dim=0), keepdim=True)], dim=1)
+    logits, _ = model(new)
+    return torch.cat([new, torch.argmax(torch.squeeze(logits, dim=0), keepdim=True)], dim=1)[0][-2:]
+
 
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
@@ -362,6 +417,13 @@ while True:
             mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, dt)
             running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
         print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
+    
+    if iter_num % acc_interval == 0 and master_process:
+            out = estimate_accuracy()
+            train_acc = out['train'][0] / out['train'][1]
+            val_acc = out['val'][0] / out['val'][1]
+            print(f"iter {iter_num}: train acc: {train_acc:.4f}, val_acc: {val_acc:.4f}")
+
     iter_num += 1
     local_iter_num += 1
 
