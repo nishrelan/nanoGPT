@@ -21,8 +21,6 @@ from .utils import _get_submodules
 #  Licensed under the Apache License, Version 2.0 (the "License").
 #  ------------------------------------------------------------------------------------------
 
-# TODO: Add bias to Lora Layer (not training bias during finetuning, but just make it so 
-#       that a pretrained model with biases can retain them in the lora version)
 
 @dataclass
 class LoraConfig:
@@ -96,15 +94,18 @@ class LoraModel(nn.Module):
 
     # replace linear layer with lora linear layer
     def _replace_module(self, parent: nn.Module, target: nn.Linear, target_name: str):
+        use_bias = target.bias is not None
         in_features = target.in_features
         out_features = target.out_features
         r = self.config.r
         alpha = self.config.lora_alpha
         dropout = self.config.lora_dropout
-        new_module = LoraLinear(in_features, out_features, r, alpha, dropout)
+        new_module = LoraLinear(in_features, out_features, r, alpha, dropout, bias=use_bias)
 
         setattr(parent, target_name, new_module)
         new_module.base_linear.weight = target.weight
+        if use_bias:
+            new_module.base_linear.bias = target.bias
 
         # put module on same device
         new_module.to(target.weight.device)
@@ -135,13 +136,14 @@ class LoraModel(nn.Module):
 
 class LoraLinear(nn.Module):
     
-    def __init__(self, in_features, out_features, r, alpha, dropout) -> None:
+    def __init__(self, in_features, out_features, r, alpha, dropout, bias=False) -> None:
         super().__init__()
-        self.base_linear = nn.Linear(in_features, out_features, bias=False)
+        self.base_linear = nn.Linear(in_features, out_features, bias=bias)
         self.r = r
         self.alpha = alpha
         self.dropout = dropout
 
+        # Don't add biases to the lora layers
         self.lora_A = nn.Linear(in_features=in_features, out_features=r, bias=False)
         self.lora_B = nn.Linear(in_features=r, out_features=out_features, bias=False) 
 
