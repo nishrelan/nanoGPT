@@ -37,7 +37,7 @@ add_annotation_tokens = False
 # Assuming we should finetune at a constant rate based on other finetuning configs
 decay_lr = False
 learning_rate = 1e-3 # with baby networks can afford to go a bit higher
-max_iters = 1000
+max_iters = 2000
 lr_decay_iters = 2000 # make equal to max_iters usually
 min_lr = 1e-4 # learning_rate / 10 usually
 beta2 = 0.99 # make a bit bigger because number of tokens per iter is small

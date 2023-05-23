@@ -78,7 +78,7 @@ min_lr = 6e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchi
 backend = 'nccl' # 'nccl', 'gloo', etc.
 # system
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
-dtype = 'bfloat16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
+dtype = 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = True # use PyTorch 2.0 to compile the model to be faster
 # LoRA finetuning
 do_lora = False
@@ -88,7 +88,7 @@ lora_dropout = 0.05
 # checkers specific stuff
 train_checkers = False # if true need to add extra embeddings
 acc_games = 1 # number of games to use for accuracy estimate
-acc_interval = 100
+acc_interval = 200
 
 
 # -----------------------------------------------------------------------------
@@ -259,6 +259,8 @@ def estimate_accuracy():
     def index_to_alpha(move):
         if move.sum() == 0:
             return None # 0s indicate -100 tokens, meaning game is over
+        elif move[1] == 0:
+            return None
         return ''.join([inttochar(val_data.itos[m.item()]) for m in move])
     out = {
         'train': [0, 0],
