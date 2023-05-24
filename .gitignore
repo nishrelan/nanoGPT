@@ -10,3 +10,4 @@ checkpoints/
 .pkl
 raw_data/
 *.pkl
+wandb/

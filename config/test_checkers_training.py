@@ -2,7 +2,7 @@
 # good for debugging and playing on macbooks and such
 
 out_dir = 'out-shakespeare-char'
-eval_interval = 250 # keep frequent because we'll overfit
+eval_interval = 200 # keep frequent because we'll overfit
 eval_iters = 20
 log_interval = 10 # don't print too too often
 
@@ -10,11 +10,11 @@ log_interval = 10 # don't print too too often
 always_save_checkpoint = False
 
 wandb_log = False # override via command line if you like
-wandb_project = 'shakespeare-char'
-wandb_run_name = 'mini-gpt'
+wandb_project = 'nanogpt-checkers'
+wandb_run_name = 'test-run'
 
 
-gradient_accumulation_steps = 1
+gradient_accumulation_steps = 1 # single gpu training
 batch_size = 12
 
 

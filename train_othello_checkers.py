@@ -43,7 +43,7 @@ from checkers import CheckersBoard
 out_dir = 'out'
 eval_interval = 2000
 log_interval = 1
-eval_iters = 200
+eval_iters = 200 # number of batches to average over when estimating loss
 eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
@@ -88,7 +88,8 @@ lora_dropout = 0.05
 # checkers specific stuff
 train_checkers = False # if true need to add extra embeddings
 acc_games = 1 # number of games to use for accuracy estimate
-acc_interval = 200
+# randomness
+rng_seed = 1337
 
 
 # -----------------------------------------------------------------------------
@@ -120,7 +121,7 @@ print(f"tokens per iteration will be: {tokens_per_iter:,}")
 
 if master_process:
     os.makedirs(out_dir, exist_ok=True)
-torch.manual_seed(1337 + seed_offset)
+torch.manual_seed(rng_seed + seed_offset)
 torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
 torch.backends.cudnn.allow_tf32 = True # allow tf32 on cudnn
 device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
@@ -356,12 +357,15 @@ while True:
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
         losses = estimate_loss()
+        accs = estimate_accuracy()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
             wandb.log({
                 "iter": iter_num,
                 "train/loss": losses['train'],
                 "val/loss": losses['val'],
+                "train/acc": accs['train'][0] / accs['train'][1],
+                "val/acc": accs['val'][0] / accs['val'][1],
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
             })
@@ -420,11 +424,6 @@ while True:
             running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
         print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
     
-    if iter_num % acc_interval == 0 and master_process:
-            out = estimate_accuracy()
-            train_acc = out['train'][0] / out['train'][1]
-            val_acc = out['val'][0] / out['val'][1]
-            print(f"iter {iter_num}: train acc: {train_acc:.4f}, val_acc: {val_acc:.4f}")
 
     iter_num += 1
     local_iter_num += 1
