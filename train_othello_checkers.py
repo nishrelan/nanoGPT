@@ -41,11 +41,13 @@ from checkers import CheckersBoard
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
+ckpt_name = 'ckpt.pt'
 eval_interval = 2000
 log_interval = 1
 eval_iters = 200 # number of batches to average over when estimating loss
 eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
+never_save_checkpoint = False
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 # wandb logging
 wandb_log = False # disabled by default
@@ -61,7 +63,9 @@ n_layer = 12
 n_head = 12
 n_embd = 768
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
-bias = False # do we use bias inside LayerNorm and Linear layers?
+bias = False # relic -- will delete at some point
+linear_bias = True # do we use bias in linear layers?
+ln_bias = False # do we use bias inside layer norm modules?
 # adamw optimizer
 learning_rate = 6e-4 # max learning rate
 max_iters = 600000 # total number of training iterations
@@ -93,6 +97,7 @@ rng_seed = 1337
 
 
 # -----------------------------------------------------------------------------
+assert not (always_save_checkpoint and never_save_checkpoint)
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('configurator.py').read()) # overrides from command line or config file
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
@@ -164,7 +169,8 @@ meta_vocab_size = 61 + 6
 
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
-                  bias=bias, vocab_size=None, dropout=dropout) # start with model_args from command line
+                  bias=bias, linear_bias=linear_bias, ln_bias=ln_bias,
+                  vocab_size=None, dropout=dropout) # start with model_args from command line
 lora_args = dict(r=r, alpha=alpha, lora_dropout=lora_dropout)
 
 if init_from == 'scratch':
@@ -179,12 +185,12 @@ if init_from == 'scratch':
 elif init_from == 'resume':
     print(f"Resuming training from {out_dir}")
     # resume training from a checkpoint.
-    ckpt_path = os.path.join(out_dir, 'ckpt.pt')
+    ckpt_path = os.path.join(out_dir, ckpt_name)
     checkpoint = torch.load(ckpt_path, map_location=device)
     checkpoint_model_args = checkpoint['model_args']
     # force these config attributes to be equal otherwise we can't even resume training
     # the rest of the attributes (e.g. dropout) can stay as desired from command line
-    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
+    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'linear_bias', 'ln_bias']:
         model_args[k] = checkpoint_model_args[k]
     # create the model
     gptconf = GPTConfig(**model_args)
@@ -205,12 +211,13 @@ elif init_from.startswith('gpt2'):
     override_args = dict(dropout=dropout)
     model = GPT.from_pretrained(init_from, override_args)
     # read off the created config params, so we can store them into checkpoint correctly
-    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
+    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'linear_bias', 'ln_bias']:
         model_args[k] = getattr(model.config, k)
 elif init_from == 'othello':
     print(f"Initializing from pretrained Othello GPT model")
-    model = GPT.from_pretrained_othello('./checkpoints/gpt_championship.ckpt')
-
+    model = GPT.from_pretrained_othello('./checkpoints/gpt_championship.ckpt', GPTConfig(**model_args))
+    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size', 'linear_bias', 'ln_bias']:
+        model_args[k] = getattr(model.config, k)
 
 
 
@@ -369,7 +376,7 @@ while True:
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
             })
-        if losses['val'] < best_val_loss or always_save_checkpoint:
+        if (losses['val'] < best_val_loss or always_save_checkpoint) and not never_save_checkpoint:
             best_val_loss = losses['val']
             if iter_num > 0:
                 checkpoint = {
@@ -381,7 +388,7 @@ while True:
                     'config': config,
                 }
                 print(f"saving checkpoint to {out_dir}")
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
+                torch.save(checkpoint, os.path.join(out_dir, ckpt_name))
     if iter_num == 0 and eval_only:
         break
 

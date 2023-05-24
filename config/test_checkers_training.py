@@ -1,13 +1,16 @@
 # train a miniature character-level shakespeare model
 # good for debugging and playing on macbooks and such
 
-out_dir = 'out-shakespeare-char'
+out_dir = 'out-checkers'
+ckpt_name = 'ckpt.pt'
 eval_interval = 200 # keep frequent because we'll overfit
 eval_iters = 20
 log_interval = 10 # don't print too too often
 
-# we expect to overfit on this small dataset, so only save when val improves
+# Haven't set up model registry on wandb so for now just going to 
+# log runs and then re train with the best hyperparams
 always_save_checkpoint = False
+never_save_checkpoint = True
 
 wandb_log = False # override via command line if you like
 wandb_project = 'nanogpt-checkers'

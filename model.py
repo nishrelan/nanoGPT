@@ -230,16 +230,17 @@ class GPT(nn.Module):
                 block.attn.bias = block.attn.bias[:,:,:block_size,:block_size]
 
     @classmethod
-    def from_pretrained_othello(cls, path_to_ckpt):
+    def from_pretrained_othello(cls, path_to_ckpt, config):
         vocab_size = 61
         block_size = 59
         n_layer = 8
         n_head = 8
         n_embd = 512
-        dropout = 0.0 # add as param to function (override arg or something)
         linear_bias = True
         ln_bias = False
         weight_tying = False
+
+        dropout = config.dropout # not part of pretrained model state -- just a training hyperparam
 
         config = minGPTConfig(vocab_size, block_size, n_layer=8, n_head=8, n_embd=512)
         othello_model = minGPT(config)
