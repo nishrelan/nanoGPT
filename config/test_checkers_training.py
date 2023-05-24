@@ -19,6 +19,7 @@ wandb_run_name = 'test-run'
 
 gradient_accumulation_steps = 1 # single gpu training
 batch_size = 12
+acc_games = 2*batch_size
 
 
 # can't be adjusted yet, need to change that. Hardcoded to zero when loading othello model
@@ -31,7 +32,7 @@ init_from = "othello"
 n_layer = 8
 n_head = 8
 n_embd = 512
-block_size = 60
+block_size = 59
 
 # Set this to True to add extra embeddings when training using checkers dataset
 train_checkers = True
