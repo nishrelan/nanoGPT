@@ -100,6 +100,14 @@ rng_seed = 1337
 assert not (always_save_checkpoint and never_save_checkpoint)
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('configurator.py').read()) # overrides from command line or config file
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# technically configs, but want these set according to rules for hyperparameter sweeps
+max_iters = 20000/batch_size*10 # 10 epochs
+min_lr = learning_rate / 10
+lr_decay_iters = max_iters
+acc_games = batch_size
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
 

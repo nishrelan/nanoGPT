@@ -11,3 +11,4 @@ checkpoints/
 raw_data/
 *.pkl
 wandb/
+*.yaml
