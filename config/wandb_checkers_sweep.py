@@ -13,7 +13,7 @@ always_save_checkpoint = False
 never_save_checkpoint = True
 
 # CHECK THIS IF SWEEP DOESN'T WORK
-wandb_log = False # override via command line if you like
+wandb_log = True # override via command line if you like
 wandb_project = 'nanogpt-checkers'
 wandb_run_name = 'test-run'
 
@@ -27,7 +27,7 @@ batch_size = 12
 dropout = 0.0
 
 # load pretrained othello model
-init_from = "othello"
+init_from = "scratch"
 
 # othello model params
 n_layer = 8
