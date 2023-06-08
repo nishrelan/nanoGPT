@@ -1,7 +1,38 @@
 
-# nanoGPT
+# Representations in GPT 
 
-This is a fork of the original nanoGPT repo by Andrej Karpathy. I am working on implementing LoRA, a parameter-efficient fine-tuning method, to fine-tune a model trained to play Othello on additional data and explore its learned representations and features. This project is inspired by Kenneth Li's work! https://thegradient.pub/othello/ 
+This is a fork of the original nanoGPT repo by Andrej Karpathy. I am working on a project inspired by Kenneth Li's work on [emergent world representations in LLM's](https://thegradient.pub/othello/). 
+
+## Overview
+In the above work, minGPT (old version of nanoGPT) was trained to predict legal Othello moves given a game transcripts that describe board states. However, the researchers discovered that even though the model was not given an explicit representation of the board state, it was "constructing" one all on its own! They showed this by probing the internal activations of the model and training the probes to classify each square in the 8x8 Othello board. 
+
+I am interested to learn more about this representation. In particular, I want to know what aspects of this representation can be transferred to other games, and if it can, in what ways the representation changes. To do this, I took the pre-trained minGPT model, and fine-tuned it to play legal checkers moves. I then plan to take the pretrained probes and see if they work off the shelf with the fine-tuned model. My hypothesis is the following: Given that the pre-trained model's activations contain features that can be used to construct an Othello board, they should contain features that can be used to construct a general 8x8 board. In that case, there is no need for these features to change when the model is fine-tuned to play checkers. If the hypothesis is true, we'd hope to see two things happen: 
+1. Fine-tuning the pretrained model should be faster than training a fresh model from scratch
+2. The trained probes that classified Othello board states should be able to classify Checkers board states with better-than-random accuracy.
+
+Unfortunately, after comparing the speed of fine-tuning vs training from scratch, I found that they trained at around the same speed. However, I still have yet to apply the pre-trained probes to see how accurately they classify Checkers board states.
+
+## Code that I changed from original repo
+Below is an overview of modified/new files.
+
+- `train_othello_checkers.py`
+    - Mostly a copy of train.py except for a few changes. I added a few extra configuration parameters, a function for computing accuracy of predicted checkers moves, an option to load the pretrained Othello model, and an option to fine-tune models using LoRA
+- `model.py`
+    - Added a method for loading a pretrained Othello minGPT model into a nanoGPT model 
+- `old_model.py`
+    - MinGPT model definition
+- `checkers.py`
+    - Implementation of checkers implementation (using DeepMind's OpenSpiel library) in order to simulate games and generate/check legal moves
+- `data/checkers/prepare.py`
+    - Preprocessing raw checkers game data
+- `peft/lora.py`
+    - Implementation of LoRA for GPT architectures (as an alternative fine-tuning method for pretrained Othello model)
+- `config/wandb_checkers_sweep.py`
+    - Config file for running wandb hyperparam sweep on a machine with a GPU 
+
+
+
+# Original nanoGPT README
 
 ![nanoGPT](assets/nanogpt.jpg)
 
