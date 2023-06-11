@@ -10,7 +10,7 @@ I kicked off this project to learn more about this representation. I hypothesize
 1. Fine-tuning the pretrained model should be faster than training a fresh model from scratch
 2. The trained probes that classified Othello board states should be able to classify Checkers board states with better-than-random accuracy.
 
-I trained token-level nanoGPT models from scratch, fine-tuned the pretrained Othello model, and compared their performances. Since Checkers and Othello are both played on an 8x8 board, I was able to leverage the trained embeddings from the pretrained Othello model when fine tuning. Below are the loss/accuracy curves for both settings:
+I trained token-level nanoGPT models from scratch, fine-tuned the pretrained Othello model (by porting the minGPT model to nanoGPT), and compared their performances. Since Checkers and Othello are both played on an 8x8 board, I was able to leverage the trained embeddings from the pretrained Othello model when fine tuning. Below are the loss/accuracy curves for both settings:
 
 INSERT LOSS/ACC CURVES HERE
 
