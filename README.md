@@ -33,7 +33,7 @@ Below is an overview of modified/new files.
 - `old_model.py`
     - MinGPT model definition
 - `checkers.py`
-    - Implementation of checkers implementation (using DeepMind's OpenSpiel library) in order to simulate games and generate/check legal moves
+    - Checkers game engine (using DeepMind's OpenSpiel library) in order to simulate games and generate/check legal moves
 - `data/checkers/prepare.py`
     - Preprocessing raw checkers game data
 - `peft/lora.py`
