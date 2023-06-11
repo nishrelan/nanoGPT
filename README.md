@@ -1,16 +1,27 @@
 
-# Representations in GPT 
+# CheckersGPT 
 
-This is a fork of the original nanoGPT repo by Andrej Karpathy. I am working on a project inspired by Kenneth Li's work on [emergent world representations in LLM's](https://thegradient.pub/othello/). 
+This is a fork of the original nanoGPT repo by Andrej Karpathy. CheckersGPT is a port of nanoGPT designed to be trained and fine-tuned to play legal checkers moves using solely game transcripts. In particular, we do not give CheckersGPT an explicit representation of the board state. This work is inspired by Kenneth Li's work on [emergent world representations in LLM's](https://thegradient.pub/othello/).
 
 ## Overview
-In the above work, minGPT (old version of nanoGPT) was trained to predict legal Othello moves given a game transcripts that describe board states. However, the researchers discovered that even though the model was not given an explicit representation of the board state, it was "constructing" one all on its own! They showed this by probing the internal activations of the model and training the probes to classify each square in the 8x8 Othello board. 
+In Kenneth's work, minGPT (old version of nanoGPT) was trained to predict legal Othello moves given a game transcripts that describe board states. However, the researchers discovered that even though the model was not given an explicit representation of the board state, it was "constructing" one all on its own. They showed this by extracting the internal activations of the model and training probes to classify each square in the 8x8 Othello board using these internal activations.
 
-I am interested to learn more about this representation. In particular, I want to know what aspects of this representation can be transferred to other games, and if it can, in what ways the representation changes. To do this, I took the pre-trained minGPT model, and fine-tuned it to play legal checkers moves. I then plan to take the pretrained probes and see if they work off the shelf with the fine-tuned model. My hypothesis is the following: Given that the pre-trained model's activations contain features that can be used to construct an Othello board, they should contain features that can be used to construct a general 8x8 board. In that case, there is no need for these features to change when the model is fine-tuned to play checkers. If the hypothesis is true, we'd hope to see two things happen: 
+I kicked off this project to learn more about this representation. I hypothesize that since the pre-trained model's activations contain features that can be used to construct an Othello board, they should contain features that can be used to construct a general 8x8 board. Thus, the we should observe the following phenomena:
 1. Fine-tuning the pretrained model should be faster than training a fresh model from scratch
 2. The trained probes that classified Othello board states should be able to classify Checkers board states with better-than-random accuracy.
 
-Unfortunately, after comparing the speed of fine-tuning vs training from scratch, I found that they trained at around the same speed. However, I still have yet to apply the pre-trained probes to see how accurately they classify Checkers board states.
+I trained token-level nanoGPT models from scratch, fine-tuned the pretrained Othello model, and compared their performances. Since Checkers and Othello are both played on an 8x8 board, I was able to leverage the trained embeddings from the pretrained Othello model when fine tuning. Below are the loss/accuracy curves for both settings:
+
+INSERT LOSS/ACC CURVES HERE
+
+
+## TO DO
+- Take both pre-trained and fine-tuned models, extract internal activations, and evaluate ability of pre-trained Othello probes to classify the squares of a checkerboard given a game transcript
+    - It's likely that this will not work off-the-shelf. The next step would be to add a single trainable linear layer to the probe to see if there is a linear transformation of the internal activations that allows the pretrained probe to work well. If this also doesn't work, the next step is to fine-tune the pretrained probe itself, and compare this with training a probe from scratch.
+
+- Instead of vanilla fine-tuning, fine-tune OthelloGPT models using LoRA. This will be much faster, and may allow for using tools/techniques from mechanistic interpretability to understand how the world representation changes.
+
+- Implement and train/fine-tune nanoGPT on a more difficult game, like chess
 
 ## Code that I changed from original repo
 Below is an overview of modified/new files.
